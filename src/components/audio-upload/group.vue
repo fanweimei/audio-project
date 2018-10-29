@@ -20,19 +20,17 @@
     </div>
     <div class="center">
       <div v-if="!files || !files.length" class="no-data">拖动本组移动到某个分组下方，或把音频移入本分组</div>
-      <div class="file-data">
-        <draggable :list="files" :options="{group:'inner', animation:150, draggable: '.file'}" :no-transition-on-drag="true" @start="drag=true" @end="drag=false">
-          <transition-group :name="!drag? 'list-complete' : null" :css="true">
-            <audio-upload-file v-for="(data, index) in files" v-bind:key="data.id"
-              v-bind:index="index"
-              v-bind:filename="data.filename"
-              v-bind:listening="data.listening"
-              v-bind:status="data.status"
-              v-bind:last="index==files.length-1">
-            </audio-upload-file>
-          </transition-group>
-        </draggable>
-      </div>
+      <draggable class="file-content" :list="files" :options="{group:'inner', animation:150, draggable: '.file'}" :no-transition-on-drag="true" @start="drag=true" @end="drag=false">
+        <transition-group tag="div" class="file-content" name="list-complete" :css="true">
+          <audio-upload-file v-for="(data, index) in files" v-bind:key="data.id"
+            v-bind:index="index"
+            v-bind:filename="data.filename"
+            v-bind:listening="data.listening"
+            v-bind:status="data.status"
+            v-bind:last="index==files.length-1">
+          </audio-upload-file>
+        </transition-group>
+      </draggable>
     </div>
     <div class="upload-btn">
         <span>上传文件</span>
@@ -94,7 +92,7 @@ export default {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 26px;
+  /* margin-bottom: 26px; */
 }
 .name {
   color: #000;
@@ -158,9 +156,14 @@ export default {
 .center {
   position: relative;
   width: 100%;
+}
+.center.gap {
   margin-bottom: 26px;
 }
 .center .no-data {
+  position: absolute;
+  left: 0;
+  top: 26px;
   width: 100%;
   box-sizing: border-box;
   height: 60px;
@@ -171,9 +174,10 @@ export default {
   color: #888;
   font-size: 14px;
 }
-.center .file-data {
+.center .file-content {
   width: 100%;
   min-height: 60px;
+  padding: 13px 0;
 }
 .upload-btn {
   height: 36px;
