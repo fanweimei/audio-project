@@ -3,7 +3,13 @@
     <div class="top">
         <div class="name">
             <label>第{{seq}}组</label>
-            <input type="text" v-bind:value="groupname" placeholder="请输入分组名" v-on:change="updateGroupName({index, name: $event.target.value})">
+            <input type="text"
+              v-bind:value="groupname"
+              placeholder="请输入分组名"
+              v-on:change="updateGroupName({index, name: $event.target.value})"
+              maxlength="40"
+              minlength="1"
+              required>
         </div>
         <div class="op">
             <div class="eclipse" v-on:mouseover="toggleOp(true)" v-on:mouseout="toggleOp(false)">
@@ -69,12 +75,12 @@ export default {
     draggable
   },
   methods: {
+    ...mapMutations("audioUpload", ["updateGroupName"]),
     toggleOp(value) {
       setTimeout(() => {
         this.opVisible = value;
       }, 100);
-    },
-    ...mapMutations("audioUpload", ["updateGroupName"])
+    }
   }
 };
 </script>
@@ -102,7 +108,9 @@ export default {
   line-height: 36px;
 }
 .name label {
+  display: inline-block;
   margin-right: 12px;
+  width: 48px;
 }
 .name input {
   width: 360px;

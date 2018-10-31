@@ -3,7 +3,6 @@ export default {
     state: {
         dataset: [
             {
-                title: 'title1...',
                 id: '01',
                 groupname: '',
                 files: [
@@ -17,7 +16,6 @@ export default {
                 ]
             },
             {
-                title: 'title2...',
                 id: '02',
                 groupname: '',
                 files: [
@@ -52,7 +50,6 @@ export default {
                 ]
             },
             {
-                title: 'title3...',
                 id: '03',
                 groupname: '',
                 files: []
@@ -65,6 +62,15 @@ export default {
     mutations: {
         updateGroupName(state, {index, name}) {
             state.dataset[index].name = name;
+        },
+        createGroup(state, { list }) {
+            state.dataset = [...state.dataset, ...list.map(e => {
+                return {
+                    id: Math.random().toString(36).slice(2),
+                    groupname: e.groupname,
+                    files: []
+                }
+            })];
         }
     },
     actions: {

@@ -4,7 +4,7 @@
     <div class="content" v-bind:class="{'last': last}">
         <div class="filename">
             <input type="text" v-bind:value="filename" placeholder="请输入文件名">
-            <div class="bar"></div>
+            <div v-if="status==2" class="bar"></div>
         </div>
         <div class="status">
             <template v-if="status==1">
@@ -114,6 +114,15 @@ export default {
   font-size: 14px;
   color: #000;
 }
+.bar {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width:229px;
+    height:2px;
+    background:linear-gradient(90deg,rgba(245,101,85,1) 0%,rgba(255,150,139,1) 100%);
+    border-radius:1px;
+}
 .status {
   width: 90px;
   height: 36px;
@@ -151,7 +160,7 @@ export default {
   color: #666;
   cursor: pointer;
 }
-.desc {
+.file .desc {
   margin-right: 8px;
   font-size: 14px;
 }
