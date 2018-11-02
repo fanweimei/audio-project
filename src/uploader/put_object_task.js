@@ -14,17 +14,18 @@
  * @author leeight
  */
 
-var u = require('underscore');
-var sdk = require('bce-sdk-js');
+import * as sdk from 'bce-sdk-js';
 
-var utils = require('./utils');
-var events = require('./events');
-var Task = require('./task');
+import * as utils from './utils';
+import events from './events';
+import Task from './task';
 
-function PutObjectTask() {
-    Task.apply(this, arguments);
+class PutObjectTask extends Task {
+    constructor(client, eventDispatcher, taskOptions) {
+        super(client, eventDispatcher, taskOptions);
+    }
 }
-utils.inherits(PutObjectTask, Task);
+
 
 PutObjectTask.prototype.start = function (opt_maxRetries) {
     if (this.aborted) {
@@ -44,7 +45,10 @@ PutObjectTask.prototype.start = function (opt_maxRetries) {
         : opt_maxRetries;
 
     var contentType = utils.guessContentType(file);
-    var options = u.extend({'Content-Type': contentType}, metas);
+    console.log('contentType:', contentType);
+    var options = { ...{ 'Content-Type': contentType }, ...metas };
+    console.log(options)
+    console.log(bucket, object, file)
 
     this.xhrRequesting = this.client.putObjectFromBlob(bucket, object, file, options);
 
@@ -56,29 +60,30 @@ PutObjectTask.prototype.start = function (opt_maxRetries) {
 
         dispatcher.dispatchEvent(events.kFileUploaded, [file, response]);
     })
-    .catch(function (error) {
-        var eventType = self.aborted ? events.kAborted : events.kError;
-        dispatcher.dispatchEvent(eventType, [error, file]);
+        .catch(function (error) {
+            var eventType = self.aborted ? events.kAborted : events.kError;
+            console.log(44)
+            dispatcher.dispatchEvent(eventType, [error, file]);
 
-        if (error.status_code && error.code && error.request_id) {
-            // 应该是正常的错误(比如签名异常)，这种情况就不要重试了
+            if (error.status_code && error.code && error.request_id) {
+                // 应该是正常的错误(比如签名异常)，这种情况就不要重试了
+                return sdk.Q.resolve();
+            }
+            // else if (error.status_code === 0) {
+            //    // 可能是断网了，safari 触发 online/offline 延迟比较久
+            //    // 我们推迟一下 self._uploadNext() 的时机
+            //    self.pause();
+            //    return;
+            // }
+            else if (maxRetries > 0 && !self.aborted) {
+                // 还有机会重试
+                return self.start(maxRetries - 1);
+            }
+
+            // 重试结束了，不管了，继续下一个文件的上传
             return sdk.Q.resolve();
-        }
-        // else if (error.status_code === 0) {
-        //    // 可能是断网了，safari 触发 online/offline 延迟比较久
-        //    // 我们推迟一下 self._uploadNext() 的时机
-        //    self.pause();
-        //    return;
-        // }
-        else if (maxRetries > 0 && !self.aborted) {
-            // 还有机会重试
-            return self.start(maxRetries - 1);
-        }
-
-        // 重试结束了，不管了，继续下一个文件的上传
-        return sdk.Q.resolve();
-    });
+        });
 };
 
 
-module.exports = PutObjectTask;
+export default PutObjectTask;

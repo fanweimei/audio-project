@@ -32,6 +32,7 @@
 import { mapState } from "vuex";
 import draggable from "vuedraggable";
 import { BosClient, MimeType } from "bce-sdk-js";
+import Uploader from "../../uploader";
 import AudioUploadGroup from "./group.vue";
 import AudioUploadGroupNew from "./group-new.vue";
 
@@ -46,6 +47,59 @@ let bucket = "web-sa";
 let key = "hello.js";
 let client = new BosClient(config);
 const MAX_SIZE = 1024 * 1024 * 1024;
+const uploader = new Uploader({
+  bos_endpoint: "https://gz.bcebos.com",
+  bos_bucket: "web-sa",
+  bos_ak: "ed7791fdac8c41c28f45f8adaf629400 ",
+  bos_sk: "d5a46f9df08244e3ad2e8b15b4ef5b37",
+  max_retries: 1,
+  auto_start: true,
+  max_selected_size: 10,
+  max_file_size: "1Gb",
+  bos_multipart_min_size: "10Mb",
+  bos_multipart_parallel: 1,
+  bos_task_parallel: 3,
+  chunk_size: "4Mb",
+  bos_multipart_auto_continue: true,
+  init: {
+    FilesAdded: function(_, files) {
+      console.log("filesadd:", files);
+    },
+    FilesFilter: function(_, files) {
+      console.log("filesfilter:", files);
+    },
+    UploadProgress: function(_, file, progress, event) {
+      // 文件的上传进度
+      console.log("progress:", file, progress);
+    },
+    NetworkSpeed: function(_, bytes, time, pendings) {
+      var speed = bytes / time; // 上传速度
+      var leftTime = pendings / speed; // 剩余时间
+      console.log("NetworkSpeed:", leftTime);
+    },
+    FileUploaded: function(_, file, info) {
+      // 文件上传成功之后，调用这个函数
+      var url = [bos_endpoint, info.body.bucket, info.body.object].join("/");
+      console.log("FileLoaded:", url);
+    },
+    Error: function(_, error, file) {
+      // 如果上传的过程中出错了，调用这个函数
+      console.error(error, file);
+    },
+    UploadComplete: function() {
+      // 队列里面的文件上传结束了，调用这个函数
+      console.warn("over....");
+    },
+    UploadResume: function(_, file, partList, event) {
+      // 断点续传生效时，调用这个函数，partList表示上次中断时，已上传完成的分块列表
+      console.log("uploadResume:", file, partList);
+    },
+    UploadResumeError: function(_, file, error, event) {
+      // 尝试进行断点续传失败时，调用这个函数
+      console.log("UploadResumeError:", file);
+    }
+  }
+});
 
 export default {
   name: "audio-upload",
@@ -67,41 +121,7 @@ export default {
       this.$modal.show("add-group-panel");
     },
     uploadFile: function(evt) {
-      const files = evt.target.files; // 获取要上传的文件
-      console.log(evt.target.files[0]);
-      
-      if (files.length <= 0) {
-        return;
-      }
-      const list = [];
-      Object.keys(files).forEach(index => {
-        if (files[index].size > MAX_SIZE) {
-          return alert("单个课程内容不能大于1G");
-        }
-        if (list.length < 10) {
-          list.push(files[index]);
-        } else {
-          return;
-        }
-      });
-      let ext, mimeType, options;
-      for (const file of list) {
-        ext = file.name.split(/\./g).pop();
-        mimeType = MimeType.guess(ext);
-        options = {
-          "Content-Type": mimeType
-        };
-        console.log(file.name)
-        console.log(file)
-        client
-          .putObjectFromBlob(bucket, file.name, file, options)
-          .then(function(res) {
-            console.log("上传成功");
-          })
-          .catch(function(err) {
-            console.error(err);
-          });
-      }
+      uploader.addFiles(evt);
     }
   }
 };

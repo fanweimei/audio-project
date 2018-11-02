@@ -15,17 +15,17 @@
  */
 import axios from 'axios';
 import * as sdk from 'bce-sdk-js';
-var u = require('underscore');
-var debug = require('debug')('bce-bos-uploader');
+// var u = require('underscore');
+// var debug = require('debug')('bce-bos-uploader');
 
-var utils = require('./utils');
+import * as utils from './utils';
 import * as tracker from './tracker';
-var events = require('./events');
-var kDefaultOptions = require('./config');
-var PutObjectTask = require('./put_object_task');
-var MultipartTask = require('./multipart_task');
-var StsTokenManager = require('./sts_token_manager');
-var PolicyManager = require('./policy_manager');
+import events from './events';
+import kDefaultOptions from './config';
+import MultipartTask from './multipart_task';
+import PutObjectTask from './put_object_task';
+import StsTokenManager from './sts_token_manager';
+import PolicyManager from './policy_manager';
 import NetworkInfo from './network_info';
 
 /**
@@ -116,7 +116,7 @@ class Uploader {
             return method.apply(null, args);
         }
         catch (ex) {
-            debug('%s(%j) -> %s', methodName, args, ex);
+            console.error('%s(%j) -> %s', methodName, args, ex);
             if (throwErrors === true) {
                 return sdk.Q.reject(ex);
             }
@@ -130,7 +130,7 @@ class Uploader {
     }
 
     _onError(e) {
-        debug(e);
+        console.error(e);
     }
 
     _getCustomizedSignature(uptokenUrl) {
@@ -186,7 +186,7 @@ class Uploader {
         }
         var promise = options.bos_credentials
             ? sdk.Q.resolve()
-            : self.refreshStsToken();
+            : this.refreshStsToken();
         promise.then(() => {
             if (options.bos_credentials) {
                 this.client.createSignature = function (_, httpMethod, path, params, headers) {
@@ -205,7 +205,8 @@ class Uploader {
             this._invoke(events.kPostInit);
             this._policyManager = new PolicyManager(options);
         }).catch(error => {
-            debug(error);
+            console.log(11);
+            console.error(error);
             this._invoke(events.kError, [error]);
         });
     }
@@ -229,11 +230,28 @@ class Uploader {
 
         return this._invoke(events.kFilesFilter, [files]) || files;
     }
-
-    _onFilesAdded(e) {
+    /**
+     * 添加文件 与input type="file" 的change事件绑定
+     * @param {*} e 
+     */
+    addFiles(e) {
         var files = e.target.files;
+        if (Array.from) {
+            files = Array.from(files);
+        } else {
+            var arr = [];
+            Object.keys(files).forEach(key => {
+                if (typeof files[key] == 'object') {
+                    arr.push(files[key]);
+                }
+            });
+            files = arr;
+        }
         files = this._filterFiles(files);
         if (Array.isArray(files) && files.length) {
+            if (this.options.max_selected_size > 0 && files.length > this.options.max_selected_size) {
+                files = files.slice(0, this.options.max_selected_size);
+            }
             this._networkInfo.totalBytes += files.reduce((previous, item) => {
                 // 这里是 abort 的默认实现，开始上传的时候，会改成另外的一种实现方式
                 // 默认的实现是为了支持在没有开始上传之前，也可以取消上传的需求
@@ -293,6 +311,7 @@ class Uploader {
 
         this._invoke(eventType, [file, progress, e]);
     }
+
     remove(item) {
         if (typeof item === 'string') {
             item = this._uploadingFiles[item] || this.files.find(file => {
@@ -303,6 +322,7 @@ class Uploader {
             item.abort();
         }
     }
+
     dispatchEvent(eventName, eventArguments, throwErrors) {
         if (eventName === events.kAborted
             && eventArguments
@@ -316,201 +336,205 @@ class Uploader {
         }
         return this._invoke(eventName, eventArguments, throwErrors);
     }
-}
 
+    start() {
+        var self = this;
 
+        if (this._working) {
+            return;
+        }
 
-Uploader.prototype.start = function () {
-    var self = this;
+        if (this._files.length) {
+            this._working = true;
+            this._abort = false;
+            this._networkInfo.reset();
 
-    if (this._working) {
-        return;
+            var taskParallel = this.options.bos_task_parallel;
+            utils.eachLimit(this._files, taskParallel,
+                function (file, callback) {
+                    file._previousLoaded = 0;
+                    self._uploadNext(file).fin(function () {
+                        delete self._uploadingFiles[file.uuid];
+                        callback(null, file);
+                    });
+                },
+                function (error) {
+                    self._working = false;
+                    self._files.length = 0;
+                    self._networkInfo.totalBytes = 0;
+                    self._invoke(events.kUploadComplete);
+                });
+        }
     }
 
-    if (this._files.length) {
-        this._working = true;
-        this._abort = false;
-        this._networkInfo.reset();
+    _uploadNext(file) {
+        if (this._abort) {
+            this._working = false;
+            return sdk.Q.resolve();
+        }
 
-        var taskParallel = this.options.bos_task_parallel;
-        utils.eachLimit(this._files, taskParallel,
-            function (file, callback) {
-                file._previousLoaded = 0;
-                self._uploadNext(file).fin(function () {
-                    delete self._uploadingFiles[file.uuid];
-                    callback(null, file);
-                });
-            },
-            function (error) {
-                self._working = false;
-                self._files.length = 0;
-                self._networkInfo.totalBytes = 0;
-                self._invoke(events.kUploadComplete);
+        if (file._aborted === true) {
+            return sdk.Q.resolve();
+        }
+
+        var throwErrors = true;
+        var returnValue = this._invoke(events.kBeforeUpload, [file], throwErrors);
+        if (returnValue === false) {
+            return sdk.Q.resolve();
+        }
+
+        var self = this;
+        return sdk.Q.resolve(returnValue)
+            .then(function () {
+                return self._uploadNextImpl(file);
+            })
+            .catch(function (error) {
+                console.log(22)
+                self._invoke(events.kError, [error, file]);
             });
     }
-};
 
-Uploader.prototype.stop = function () {
-    this._abort = true;
-    this._working = false;
-};
+    _uploadNextImpl(file) {
+        var self = this;
+        var options = this.options;
+        var object = file.name;
+        var throwErrors = true;
 
-/**
- * 动态设置 Uploader 的某些参数，当前只支持动态的修改
- * bos_credentials, uptoken, bos_bucket, bos_endpoint
- * bos_ak, bos_sk
- *
- * @param {Object} options 用户动态设置的参数（只支持部分）
- */
-Uploader.prototype.setOptions = function (options) {
-    var supportedOptions = u.pick(options, 'bos_credentials',
-        'bos_ak', 'bos_sk', 'uptoken', 'bos_bucket', 'bos_endpoint');
-    this.options = u.extend(this.options, supportedOptions);
+        var defaultTaskOptions = {};
+        var arr = ['max_retries', 'chunk_size',
+            'bos_multipart_parallel',
+            'bos_multipart_auto_continue',
+            'bos_multipart_local_key_generator'];
+        Object.keys(options).forEach(key => {
+            if (arr.includes(key)) {
+                defaultTaskOptions[key] = options[key];
+            }
+        });
 
-    var config = this.client && this.client.config;
-    if (config) {
-        var credentials = null;
+        return sdk.Q.all([
+            this._invoke(events.kKey, [file], throwErrors),
+            this._invoke(events.kObjectMetas, [file])
+        ]).then(function (array) {
+            // options.bos_bucket 可能会被 kKey 事件动态的改变
+            var bucket = options.bos_bucket;
 
-        if (options.bos_credentials) {
-            credentials = options.bos_credentials;
-        }
-        else if (options.bos_ak && options.bos_sk) {
-            credentials = {
-                ak: options.bos_ak,
-                sk: options.bos_sk
+            var result = array[0];
+            var objectMetas = array[1];
+
+            var multipart = 'auto';
+            if (typeof result == 'string') {
+                object = result;
+            }
+            else if (typeof result == 'object') {
+                bucket = result.bucket || bucket;
+                object = result.key || object;
+
+                // 'auto' / 'off'
+                multipart = result.multipart || multipart;
+            }
+
+            var client = self.client;
+            var eventDispatcher = self;
+            var taskOptions = {
+                ...defaultTaskOptions, ...{
+                    file: file,
+                    bucket: bucket,
+                    object: object,
+                    metas: objectMetas
+                }
             };
-        }
 
-        if (credentials) {
-            this.options.bos_credentials = credentials;
-            config.credentials = credentials;
-        }
-        if (options.uptoken) {
-            config.sessionToken = options.uptoken;
-        }
-        if (options.bos_endpoint) {
-            config.endpoint = utils.normalizeEndpoint(options.bos_endpoint);
+            var task = null;
+            if (multipart === 'auto' && file.size > options.bos_multipart_min_size) {
+                task = new MultipartTask(client, eventDispatcher, taskOptions);
+            }
+            else {
+                task = new PutObjectTask(client, eventDispatcher, taskOptions);
+            }
+
+            self._uploadingFiles[file.uuid] = file;
+
+            file.abort = function () {
+                file._aborted = true;
+                return task.abort();
+            };
+
+            task.setNetworkInfo(self._networkInfo);
+            return task.start();
+        });
+    }
+
+    stop() {
+        this._abort = true;
+        this._working = false;
+    }
+
+
+
+    /**
+     * 动态设置 Uploader 的某些参数，当前只支持动态的修改
+     * bos_credentials, uptoken, bos_bucket, bos_endpoint
+     * bos_ak, bos_sk
+     *
+     * @param {Object} options 用户动态设置的参数（只支持部分）
+     */
+    setOptions(options) {
+        const supportedKeys = ['bos_credentials',
+            'bos_ak', 'bos_sk', 'uptoken', 'bos_bucket', 'bos_endpoint'];
+        Object.keys(options).forEach(key => {
+            if (supportedKeys.includes(key)) {
+                supportedOptions[key] = options[key];
+            }
+        });
+        this.options = { ...options, ...supportedOptions };
+        var config = this.client && this.client.config;
+        if (config) {
+            var credentials = null;
+
+            if (options.bos_credentials) {
+                credentials = options.bos_credentials;
+            }
+            else if (options.bos_ak && options.bos_sk) {
+                credentials = {
+                    ak: options.bos_ak,
+                    sk: options.bos_sk
+                };
+            }
+
+            if (credentials) {
+                this.options.bos_credentials = credentials;
+                config.credentials = credentials;
+            }
+            if (options.uptoken) {
+                config.sessionToken = options.uptoken;
+            }
+            if (options.bos_endpoint) {
+                config.endpoint = utils.normalizeEndpoint(options.bos_endpoint);
+            }
         }
     }
-};
 
-/**
+    /**
  * 有的用户希望主动更新 sts token，避免过期的问题
  *
  * @return {Promise}
  */
-Uploader.prototype.refreshStsToken = function () {
-    var self = this;
-    var options = self.options;
-    var stsMode = self._xhr2Supported
-        && options.uptoken_url
-        && options.get_new_uptoken === false;
-    if (stsMode) {
-        var stm = new StsTokenManager(options);
-        return stm.get(options.bos_bucket).then(function (payload) {
-            return self.setOptions({
-                bos_ak: payload.AccessKeyId,
-                bos_sk: payload.SecretAccessKey,
-                uptoken: payload.SessionToken
+    refreshStsToken() {
+        var self = this;
+        var options = self.options;
+        var stsMode = options.uptoken_url && options.get_new_uptoken === false;
+        if (stsMode) {
+            var stm = new StsTokenManager(options);
+            return stm.get(options.bos_bucket).then(function (payload) {
+                return self.setOptions({
+                    bos_ak: payload.AccessKeyId,
+                    bos_sk: payload.SecretAccessKey,
+                    uptoken: payload.SessionToken
+                });
             });
-        });
-    }
-    return sdk.Q.resolve();
-};
-
-Uploader.prototype._uploadNext = function (file) {
-    if (this._abort) {
-        this._working = false;
+        }
         return sdk.Q.resolve();
     }
 
-    if (file._aborted === true) {
-        return sdk.Q.resolve();
-    }
-
-    var throwErrors = true;
-    var returnValue = this._invoke(events.kBeforeUpload, [file], throwErrors);
-    if (returnValue === false) {
-        return sdk.Q.resolve();
-    }
-
-    var self = this;
-    return sdk.Q.resolve(returnValue)
-        .then(function () {
-            return self._uploadNextImpl(file);
-        })
-        .catch(function (error) {
-            self._invoke(events.kError, [error, file]);
-        });
-};
-
-Uploader.prototype._uploadNextImpl = function (file) {
-    var self = this;
-    var options = this.options;
-    var object = file.name;
-    var throwErrors = true;
-
-    var defaultTaskOptions = {};
-    var arr = ['flash_swf_url', 
-        'max_retries', 'chunk_size',
-        'bos_multipart_parallel',
-        'bos_multipart_auto_continue',
-        'bos_multipart_local_key_generator'];
-    Object.keys(options).forEach(key => {
-        if (arr.includes(key)) {
-            defaultTaskOptions[key] = options[key];
-        }
-    });
-    
-    return sdk.Q.all([
-        this._invoke(events.kKey, [file], throwErrors),
-        this._invoke(events.kObjectMetas, [file])
-    ]).then(function (array) {
-        // options.bos_bucket 可能会被 kKey 事件动态的改变
-        var bucket = options.bos_bucket;
-
-        var result = array[0];
-        var objectMetas = array[1];
-
-        var multipart = 'auto';
-        if (typeof result == 'string') {
-            object = result;
-        }
-        else if (typeof result == 'object') {
-            bucket = result.bucket || bucket;
-            object = result.key || object;
-
-            // 'auto' / 'off'
-            multipart = result.multipart || multipart;
-        }
-
-        var client = self.client;
-        var eventDispatcher = self;
-        var taskOptions = {...defaultTaskOptions, ...{
-            file: file,
-            bucket: bucket,
-            object: object,
-            metas: objectMetas
-        }};
-
-        var task = null;
-        if (multipart === 'auto' && file.size > options.bos_multipart_min_size) {
-            task = new MultipartTask(client, eventDispatcher, taskOptions);
-        }
-        else {
-            task = new PutObjectTask(client, eventDispatcher, taskOptions);
-        }
-
-        self._uploadingFiles[file.uuid] = file;
-
-        file.abort = function () {
-            file._aborted = true;
-            return task.abort();
-        };
-
-        task.setNetworkInfo(self._networkInfo);
-        return task.start();
-    });
-};
-
-module.exports = Uploader;
+}
+export default Uploader;

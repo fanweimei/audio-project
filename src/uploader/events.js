@@ -14,7 +14,7 @@
  * @author leeight
  */
 
-module.exports = {
+export default {
     kPostInit: 'PostInit',
     kKey: 'Key',
     kListParts: 'ListParts',

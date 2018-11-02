@@ -24,19 +24,15 @@ var kDefaultOptions = {
     // 默认的 ak 和 sk 配置
     bos_credentials: null,
 
-    // 为了处理 Flash 不能发送 HEAD, DELETE 之类的请求，以及无法
-    // 获取 response headers 的问题，需要搞一个 relay 服务器，把数据
-    // 格式转化一下
-    bos_relay_server: 'https://relay.efe.tech',
-
-    // 是否支持多选，默认(false)
-    multi_selection: false,
-
     // 失败之后重试的次数(单个文件或者分片)，默认(0)，不重试
     max_retries: 0,
 
     // 是否自动上传，默认(false)
     auto_start: false,
+
+    // 最大选择上传的文件数，默认0，不限制
+    max_selected_size: 0,
+
 
     // 最大可以选择的文件大小，默认(100M)
     max_file_size: '100mb',
@@ -62,9 +58,6 @@ var kDefaultOptions = {
     // 分开上传的时候，localStorage里面key的生成方式，默认是 `default`
     // 如果需要自定义，可以通过 XXX
     bos_multipart_local_key_generator: 'default',
-
-    // 是否允许选择目录
-    dir_selection: false,
 
     // 是否需要每次都去服务器计算签名
     get_new_uptoken: true,
@@ -96,7 +89,7 @@ var kDefaultOptions = {
     tracker_id: '2e0bc8c5e7ceb25796ba4962e7b57387'
 };
 
-module.exports = kDefaultOptions;
+export default kDefaultOptions;
 
 
 
